@@ -241,7 +241,7 @@ See `~/day6/lab1_tools.py` — already on disk. Contains:
 
 ### Step 1.3 — Create `lab1_ci_agent_local.py` (tool registry + agentic loop)
 
-```bash
+````bash
 cat > ~/day6/lab1_ci_agent_local.py << 'EOF'
 import sys
 import os
@@ -949,7 +949,7 @@ except KeyboardInterrupt:
     print("\n⚠️  Interrupted by user.")
     sys.exit(1)
 EOF
-```
+````
 
 ---
 
