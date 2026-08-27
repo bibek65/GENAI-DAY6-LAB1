@@ -438,14 +438,14 @@ def analyze_root_cause(log_content: str, past_failures: str = "") -> str:
 Analyze the CI log below. Return ONLY valid JSON with ALL six fields filled in.
 
 Required JSON structure (fill every field, never leave a field empty or "Unknown"):
-{{
+{
   "error_type": "dependency_conflict",
   "root_cause": "One sentence: npm ERESOLVE because @company/shared-utils@1.2.3 requires react@^17.0.0 but project installs react@18.2.0",
   "affected_file": "package.json",
   "fix_command": "npm install --legacy-peer-deps",
   "severity": "high",
   "confidence": "high"
-}}
+}
 
 Rules:
 - error_type: a short snake_case label for the category of failure
@@ -463,7 +463,7 @@ CURRENT CI FAILURE LOG:
 
     response = requests.post(
         OLLAMA_GENERATE_URL,
-        json={{"model": MODEL, "prompt": prompt, "format": "json", "stream": False}},
+        json={"model": MODEL, "prompt": prompt, "format": "json", "stream": False},
         timeout=120,
     )
     response.raise_for_status()
@@ -495,7 +495,7 @@ def draft_pr_description(analysis_json: str, past_failures: str = "") -> str:
     try:
         analysis = json.loads(analysis_json)
     except json.JSONDecodeError:
-        analysis = {{"root_cause": analysis_json}}
+        analysis = {"root_cause": analysis_json}
 
     similar_note = ""
     if past_failures:
@@ -577,84 +577,84 @@ def post_to_slack(message: str, channel: str = "#ci-alerts") -> str:
 # TOOL REGISTRY
 # ============================================================================
 
-TOOL_FUNCS = {{
+TOOL_FUNCS = {
     "read_log_file":         read_log_file,
     "search_knowledge_base": search_knowledge_base,
     "analyze_root_cause":    analyze_root_cause,
     "draft_pr_description":  draft_pr_description,
     "post_to_slack":         post_to_slack,
-}}
+}
 
 TOOL_DEFINITIONS = [
-    {{
+    {
         "type": "function",
-        "function": {{
+        "function": {
             "name": "read_log_file",
             "description": "Read a CI failure log file from disk and return its raw content.",
-            "parameters": {{
+            "parameters": {
                 "type": "object",
-                "properties": {{"filepath": {{"type": "string", "description": "Path to the CI failure log file."}}}},
+                "properties": {"filepath": {"type": "string", "description": "Path to the CI failure log file."}},
                 "required": ["filepath"],
-            }},
-        }},
-    }},
-    {{
+            },
+        },
+    },
+    {
         "type": "function",
-        "function": {{
+        "function": {
             "name": "search_knowledge_base",
             "description": "Search the CI failure knowledge base for historically similar failures. Call right after read_log_file.",
-            "parameters": {{
+            "parameters": {
                 "type": "object",
-                "properties": {{"query": {{"type": "string", "description": "Short description of the current CI error."}}}},
+                "properties": {"query": {"type": "string", "description": "Short description of the current CI error."}},
                 "required": ["query"],
-            }},
-        }},
-    }},
-    {{
+            },
+        },
+    },
+    {
         "type": "function",
-        "function": {{
+        "function": {
             "name": "analyze_root_cause",
             "description": "Analyze the CI failure root cause. Pass the raw log and past similar failures from the KB search.",
-            "parameters": {{
+            "parameters": {
                 "type": "object",
-                "properties": {{
-                    "log_content":   {{"type": "string", "description": "Raw CI log from read_log_file."}},
-                    "past_failures": {{"type": "string", "description": "Similar past failures from search_knowledge_base."}},
-                }},
+                "properties": {
+                    "log_content":   {"type": "string", "description": "Raw CI log from read_log_file."},
+                    "past_failures": {"type": "string", "description": "Similar past failures from search_knowledge_base."},
+                },
                 "required": ["log_content"],
-            }},
-        }},
-    }},
-    {{
+            },
+        },
+    },
+    {
         "type": "function",
-        "function": {{
+        "function": {
             "name": "draft_pr_description",
             "description": "Create a GitHub PR description in Markdown from the root cause analysis.",
-            "parameters": {{
+            "parameters": {
                 "type": "object",
-                "properties": {{
-                    "analysis_json": {{"type": "string", "description": "JSON string from analyze_root_cause."}},
-                    "past_failures": {{"type": "string", "description": "Similar past failures for historical context."}},
-                }},
+                "properties": {
+                    "analysis_json": {"type": "string", "description": "JSON string from analyze_root_cause."},
+                    "past_failures": {"type": "string", "description": "Similar past failures for historical context."},
+                },
                 "required": ["analysis_json"],
-            }},
-        }},
-    }},
-    {{
+            },
+        },
+    },
+    {
         "type": "function",
-        "function": {{
+        "function": {
             "name": "post_to_slack",
             "description": "Post the PR description to Slack for engineer review. Final step — requires human approval.",
-            "parameters": {{
+            "parameters": {
                 "type": "object",
-                "properties": {{
-                    "message": {{"type": "string", "description": "The full PR description to post."}},
-                    "channel": {{"type": "string", "description": "Slack channel name."}},
-                }},
+                "properties": {
+                    "message": {"type": "string", "description": "The full PR description to post."},
+                    "channel": {"type": "string", "description": "Slack channel name."},
+                },
                 "required": ["message"],
-            }},
-        }},
-    }},
+            },
+        },
+    },
 ]
 
 # ============================================================================
@@ -669,7 +669,7 @@ REQUIRED_SEQUENCE = [
     "post_to_slack",
 ]
 
-NEXT_STEP_GUIDANCE = {{
+NEXT_STEP_GUIDANCE = {
     "read_log_file": (
         "Good. You have the CI log. "
         "Now call search_knowledge_base with query='npm ERESOLVE peer dependency conflict react version'."
@@ -686,15 +686,15 @@ NEXT_STEP_GUIDANCE = {{
         "Good. You have the PR description. "
         "Now call post_to_slack with message=<the full PR description markdown text>."
     ),
-}}
+}
 
-FORCE_PROMPTS = {{
+FORCE_PROMPTS = {
     "read_log_file":         f"Call read_log_file with filepath='{LOG_FILE}'.",
     "search_knowledge_base": "Call search_knowledge_base with query='npm ERESOLVE peer dependency conflict'.",
     "analyze_root_cause":    "Call analyze_root_cause with log_content from the log file and past_failures from search.",
     "draft_pr_description":  "Call draft_pr_description with analysis_json from the root cause analysis.",
     "post_to_slack":         "Call post_to_slack with message containing the full PR description.",
-}}
+}
 
 # ============================================================================
 # OLLAMA API CALL
@@ -707,7 +707,7 @@ def _trim_messages(messages: list) -> list:
             content = msg.get("content", "")
             if len(content) > 1500:
                 content = content[:1500] + "\n...[truncated]"
-            trimmed.append({{**msg, "content": content}})
+            trimmed.append({**msg, "content": content})
         else:
             trimmed.append(msg)
     return trimmed
@@ -717,12 +717,12 @@ def call_ollama(messages: list) -> dict:
     try:
         response = requests.post(
             OLLAMA_CHAT_URL,
-            json={{
+            json={
                 "model":    MODEL,
                 "messages": _trim_messages(messages),
                 "tools":    TOOL_DEFINITIONS,
                 "stream":   False,
-            }},
+            },
             timeout=180,
         )
         response.raise_for_status()
@@ -739,46 +739,46 @@ def call_ollama(messages: list) -> dict:
 # AGENTIC LOOP
 # ============================================================================
 
-ARG_ALIASES = {{
-    "read_log_file": {{
+ARG_ALIASES = {
+    "read_log_file": {
         "filepath": ["filepath", "file_path", "path", "filename", "file", "log_path", "log_file"],
-    }},
-    "search_knowledge_base": {{
+    },
+    "search_knowledge_base": {
         "query": ["query", "failure_string", "error_string", "search_query",
                   "failure_description", "description", "error", "log_lines",
                   "log_content", "content", "text", "search_term"],
-    }},
-    "analyze_root_cause": {{
+    },
+    "analyze_root_cause": {
         "log_content":   ["log_content", "log_string", "log", "content", "ci_log",
                           "log_data", "failure_log", "log_lines", "raw_log", "log_text",
                           "ci_failure_log", "log_file_content"],
         "past_failures": ["past_failures", "similar_failures", "kb_results",
                           "historical_context", "context", "rag_results",
                           "knowledge_base_results", "search_results"],
-    }},
-    "draft_pr_description": {{
+    },
+    "draft_pr_description": {
         "analysis_json": ["analysis_json", "analysis", "root_cause_json", "root_cause",
                           "analysis_result", "json_analysis", "root_cause_analysis",
                           "analysis_data", "pr_body", "pr_content", "json_result"],
         "past_failures": ["past_failures", "similar_failures", "context",
                           "historical_context", "kb_results"],
-    }},
-    "post_to_slack": {{
+    },
+    "post_to_slack": {
         "message": ["message", "pr_description", "content", "text", "body",
                     "pr_body", "slack_message", "description", "markdown",
                     "pr_markdown", "pr_text"],
         "channel": ["channel", "slack_channel"],
-    }},
-}}
+    },
+}
 
-PLACEHOLDER_PATTERNS = {{"<PrDescription>", "<pr_description>", "<message>",
-                          "<PR description>", "PR description here"}}
+PLACEHOLDER_PATTERNS = {"<PrDescription>", "<pr_description>", "<message>",
+                          "<PR description>", "PR description here"}
 
 
 def _normalize_args(name: str, args: dict) -> dict:
-    aliases = ARG_ALIASES.get(name, {{}})
-    normalized = {{}}
-    all_alias_keys = {{v for variants in aliases.values() for v in variants}}
+    aliases = ARG_ALIASES.get(name, {})
+    normalized = {}
+    all_alias_keys = {v for variants in aliases.values() for v in variants}
     for canonical, variants in aliases.items():
         for variant in variants:
             if variant in args:
@@ -835,22 +835,22 @@ def _fill_args(name: str, args: dict, tool_state: dict) -> dict:
 
 def run_agent():
     messages = [
-        {{
+        {
             "role": "system",
             "content": (
                 "You are a CI failure analyzer. "
                 "Call tools one at a time. "
                 "Follow user instructions for which tool to call next."
             ),
-        }},
-        {{
+        },
+        {
             "role": "user",
             "content": f"Step 1: Call read_log_file with filepath='{LOG_FILE}'.",
-        }},
+        },
     ]
 
     step = 0
-    tool_state = {{}}
+    tool_state = {}
     tools_called = []
 
     def _next_required_tool():
@@ -861,7 +861,7 @@ def run_agent():
 
     while True:
         step += 1
-        print(f"\n--- Step {{step}} ---")
+        print(f"\n--- Step {step} ---")
 
         message = call_ollama(messages)
         messages.append(message)
@@ -878,29 +878,29 @@ def run_agent():
                 print(content[:2000] if content else "(workflow complete)")
                 print("=" * 70)
                 break
-            print(f"  ⚡ No tool call — forcing: {{next_tool}}")
-            messages.append({{"role": "user", "content": FORCE_PROMPTS[next_tool]}})
+            print(f"  ⚡ No tool call — forcing: {next_tool}")
+            messages.append({"role": "user", "content": FORCE_PROMPTS[next_tool]})
             continue
 
         last_successful_tool = None
         for tool_call in tool_calls:
             fn   = tool_call["function"]
             name = fn["name"]
-            args = fn.get("arguments", {{}})
+            args = fn.get("arguments", {})
 
             if isinstance(args, str):
                 try:
                     args = json.loads(args)
                 except json.JSONDecodeError:
-                    args = {{}}
+                    args = {}
 
             args = _fill_args(name, args, tool_state)
-            print(f"  🔧 Tool call: {{name}}")
+            print(f"  🔧 Tool call: {name}")
 
             if name not in TOOL_FUNCS:
-                result = f"Error: unknown tool '{{name}}'"
-                print(f"  ❌ {{result}}")
-                messages.append({{"role": "tool", "content": result}})
+                result = f"Error: unknown tool '{name}'"
+                print(f"  ❌ {result}")
+                messages.append({"role": "tool", "content": result})
                 continue
 
             try:
@@ -920,27 +920,27 @@ def run_agent():
                 last_successful_tool = name
 
             except TypeError as e:
-                result = f"Error calling {{name}}: {{e}}"
-                print(f"  ❌ {{result}}")
+                result = f"Error calling {name}: {e}"
+                print(f"  ❌ {result}")
 
-            messages.append({{"role": "tool", "content": str(result)}})
+            messages.append({"role": "tool", "content": str(result)})
 
         if "post_to_slack" in tools_called:
             print()
             print("=" * 70)
             print("✅ AGENT COMPLETED — all 5 tools called")
             print("=" * 70)
-            print(f"Tools called in order: {{tools_called}}")
+            print(f"Tools called in order: {tools_called}")
             print("=" * 70)
             break
 
         if last_successful_tool and last_successful_tool in NEXT_STEP_GUIDANCE:
             next_tool = _next_required_tool()
             if next_tool:
-                messages.append({{
+                messages.append({
                     "role": "user",
                     "content": NEXT_STEP_GUIDANCE[last_successful_tool],
-                }})
+                })
 
 
 try:
