@@ -196,8 +196,6 @@ These are not hacks and not LangGraph limitations. They are
 | Argument normalization | `lab1_ci_agent.py` — `_normalize_args` | Invented parameter names (`q` instead of `query`) failing validation silently |
 | `_LAST` intermediate state | `ci_tools.py` | Forcing the model to echo a 1 KB log through JSON arguments |
 | Log path fallback | `ci_tools.py` — `read_log_file` | Hallucinated file paths returning an error the model then ignores |
-| Type coercion | `ci_tools.py` — `_as_text` | A `dict` arriving where the tool declared `str` |
-| Output extraction | `lab1_ci_agent.py` — `main` | Relying on a 3B model to echo 1 KB of markdown back verbatim |
 
 ---
 
