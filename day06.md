@@ -411,11 +411,27 @@ reliability controls around an unreliable local model.
 
 ---
 
-## Step 1.1 — Create the failure log
+## Step 1.1 — Create all three files
 
-`ci_failure_gha.log`:
+Everything in this lab lives in three files. Copy each block below and paste it
+straight into your terminal — each one writes a complete file.
 
+```bash
+mkdir -p ~/day6 && cd ~/day6
 ```
+
+> **Why `<<'EOF'` and not `<<EOF`?** The quotes stop the shell from expanding
+> anything inside the block. `ci_tools.py` contains backticks in the PR template —
+> without the quotes the shell would try to run them as commands and mangle the file.
+
+---
+
+### File 1 of 3 — `ci_failure_gha.log`
+
+The mock GitHub Actions failure the agent will investigate.
+
+```bash
+cat > ~/day6/ci_failure_gha.log <<'EOF'
 2024-01-15T02:14:03Z Run npm install
 2024-01-15T02:14:04Z npm warn deprecated inflight@1.0.6
 2024-01-15T02:14:07Z npm error code ERESOLVE
@@ -436,20 +452,26 @@ reliability controls around an unreliable local model.
 2024-01-15T02:14:08Z npm error A complete log of this run can be found in:
 2024-01-15T02:14:08Z npm error /home/runner/.npm/_logs/2024-01-15T02_14_07_432Z-debug-0.log
 2024-01-15T02:14:08Z Error: Process completed with exit code 1.
+EOF
 ```
 
 **What actually broke:** `@company/shared-utils@1.2.3` declares a peer dependency on
 `react@^17.0.0`, but the root project `payment-service@2.4.1` requires `react@^18.2.0`.
-Since npm 7, peer dependencies are enforced strictly — no valid tree exists, so `npm install`
-aborts with exit code 1.
+Since npm 7, peer dependencies are enforced strictly — no valid tree exists, so
+`npm install` aborts with exit code 1.
+
+Note line 2, `npm warn deprecated inflight@1.0.6`. It is a **red herring** — a
+deprecation warning, not a cause. Watch whether the model falls for it.
 
 ---
 
-## Step 1.2 — Create `ci_tools.py`
+### File 2 of 3 — `ci_tools.py`
 
-### Imports and Day 05 reuse
+The four tools plus the shared `_LAST` state. Imports Day 05's RAG tool rather than
+rebuilding embeddings.
 
-```python
+```bash
+cat > ~/day6/ci_tools.py <<'EOF'
 # ci_tools.py
 
 import os
@@ -476,14 +498,12 @@ if DAY5_DIR not in sys.path:
     sys.path.insert(0, DAY5_DIR)
 
 from rag_tool import search_similar_failures
-```
 
-> **Why this matters:** Day 06 owns *no* embeddings, *no* ChromaDB client, and *no* seed
-> data. It imports one function from Day 05. One knowledge base, one source of truth.
 
-### Configuration
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
-```python
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
 MODEL = "llama3.2:3b"
@@ -491,11 +511,12 @@ MODEL = "llama3.2:3b"
 OLLAMA_GENERATE_URL = "http://localhost:11434/api/generate"
 
 LOG_FILE = "ci_failure_gha.log"
-```
 
-### Shared state + coercion helper
 
-```python
+# ============================================================================
+# HELPERS
+# ============================================================================
+
 # Outputs of previous tool calls. Small local models cannot reliably
 # echo a 1KB log back through JSON tool arguments, so later tools fall
 # back to what the earlier tools actually produced.
@@ -516,11 +537,12 @@ def _as_text(value: Union[str, dict, list, None]) -> str:
         return value
 
     return json.dumps(value, indent=2)
-```
 
-### Tool 1 — read the log
 
-```python
+# ============================================================================
+# TOOL 1 — READ LOG
+# ============================================================================
+
 @tool
 def read_log_file(filepath: str = LOG_FILE) -> str:
     """
@@ -548,24 +570,29 @@ def read_log_file(filepath: str = LOG_FILE) -> str:
 
         _LAST["log"] = content
 
-        print(f"   ✅ Read {len(content)} bytes")
+        print(
+            f"   ✅ Read {len(content)} bytes"
+        )
 
         return content
 
     except FileNotFoundError:
-        return f"Error: file not found at {resolved}"
+
+        return (
+            f"Error: file not found at {resolved}"
+        )
 
     except Exception as exc:
-        return f"Error reading file: {exc}"
-```
 
-**Reliability control:** the path fallback. The model has invented
-`/var/log/ci_failure.log` before. Returning an error string just makes it hallucinate
-log contents instead.
+        return (
+            f"Error reading file: {exc}"
+        )
 
-### Tool 2 — search the Day 05 knowledge base
 
-```python
+# ============================================================================
+# TOOL 2 — SEARCH KNOWLEDGE BASE
+# ============================================================================
+
 @tool
 def search_knowledge_base(query: str) -> str:
     """
@@ -576,26 +603,28 @@ def search_knowledge_base(query: str) -> str:
     print(f"   query = {query}")
 
     try:
+
         result = search_similar_failures(query)
 
     except Exception as exc:
+
         return f"Error searching knowledge base: {exc}"
 
     _LAST["kb"] = result
 
     matches = result.count("[similarity:")
 
-    print(f"   ✅ Found {matches} similar failure(s)")
+    print(
+        f"   ✅ Found {matches} similar failure(s)"
+    )
 
     return result
-```
 
-All the embedding and vector search happens inside Day 05's `search_similar_failures`.
-This tool is a thin wrapper that logs and caches.
 
-### Tool 3 — root cause analysis (a tool that calls an LLM)
+# ============================================================================
+# TOOL 3 — ROOT CAUSE ANALYSIS
+# ============================================================================
 
-```python
 @tool
 def analyze_root_cause(
     log_content: Union[str, dict, list] = "",
@@ -613,7 +642,10 @@ def analyze_root_cause(
     past_failures = _as_text(past_failures) or _LAST["kb"]
 
     if not log_content.strip():
-        return "Error: no log available. Call read_log_file first."
+        return (
+            "Error: no log available. "
+            "Call read_log_file first."
+        )
 
     context = ""
 
@@ -638,7 +670,8 @@ Rules:
 
 - error_type must be a short snake_case label.
 - root_cause must quote the specific package names, versions and
-  error codes found in the CI log below.
+  error codes found in the CI log below. Never write a generic
+  sentence — name the actual conflict.
 - affected_file must identify the file a human would edit to fix
   this. Never point at generated directories such as node_modules.
 - fix_command must be a runnable shell command. If a similar
@@ -647,7 +680,8 @@ Rules:
 - severity must be low, medium, or high.
 - confidence must be high when the log names an explicit error code
   and a similar historical failure was found.
-- Do not invent package names or versions.
+- Do not invent package names or versions. Use only what appears in
+  the CI log or the historical failures below.
 - Return only JSON.
 
 CI FAILURE LOG:
@@ -658,6 +692,7 @@ CI FAILURE LOG:
 """
 
     try:
+
         response = requests.post(
             OLLAMA_GENERATE_URL,
             json={
@@ -668,10 +703,13 @@ CI FAILURE LOG:
             },
             timeout=120,
         )
+
         response.raise_for_status()
+
         result = response.json()["response"]
 
     except Exception as exc:
+
         return f"Error running root cause analysis: {exc}"
 
     _LAST["analysis"] = result
@@ -679,21 +717,12 @@ CI FAILURE LOG:
     print("   ✅ Root cause analysis completed")
 
     return result
-```
 
-Three things to point out here:
 
-1. **A tool can itself call an LLM.** The agent LLM decides *to analyze*; this nested call
-   *does* the analyzing. Its JSON goes back into graph state as a `ToolMessage`.
-2. **`"format": "json"`** forces syntactically valid JSON out of `llama3.2:3b`.
-   It does **not** guarantee which keys appear.
-3. **The retrieved history is an instruction, not decoration.** The prompt explicitly says
-   *prefer that documented fix* — otherwise the model retrieves the right precedent and
-   then ignores it.
+# ============================================================================
+# TOOL 4 — DRAFT PR
+# ============================================================================
 
-### Tool 4 — draft the PR description
-
-```python
 @tool
 def draft_pr_description(
     analysis_json: Union[str, dict] = "",
@@ -713,21 +742,34 @@ def draft_pr_description(
         analysis_json = _LAST["analysis"]
 
     if not analysis_json:
-        return "Error: no analysis available. Call analyze_root_cause first."
+        return (
+            "Error: no analysis available. "
+            "Call analyze_root_cause first."
+        )
 
     if isinstance(analysis_json, dict):
+
         analysis = analysis_json
+
     else:
+
         try:
+
             analysis = json.loads(analysis_json)
+
             if not isinstance(analysis, dict):
                 analysis = {"root_cause": str(analysis)}
+
         except (json.JSONDecodeError, TypeError):
-            analysis = {"root_cause": _as_text(analysis_json)}
+
+            analysis = {
+                "root_cause": _as_text(analysis_json)
+            }
 
     historical_context = ""
 
     if past_failures:
+
         historical_context = (
             "\n### Historical Context\n\n"
             f"{past_failures[:600]}\n"
@@ -759,68 +801,95 @@ def draft_pr_description(
 Generated by CI Failure Analyzer Agent — human reviewed before merge
 """
 
-    print(f"   ✅ PR description generated ({len(pr_body)} characters)")
+    print(
+        f"   ✅ PR description generated "
+        f"({len(pr_body)} characters)"
+    )
 
     return pr_body
-```
 
-**Reliability control:** the PR body is built by **Python string formatting**, not by the
-LLM. The model supplies six short values; the document structure is deterministic. If a
-key is missing you get `Unknown`, not a hallucinated section.
 
-### Tool registry
+# ============================================================================
+# TOOL REGISTRY
+# ============================================================================
 
-```python
 TOOLS = [
     read_log_file,
     search_knowledge_base,
     analyze_root_cause,
     draft_pr_description,
 ]
+EOF
 ```
 
 ---
 
-## Step 1.3 — Create `lab1_ci_agent.py`
+### File 3 of 3 — `lab1_ci_agent.py`
 
-### Imports, model, tool binding
+The LangGraph graph, the agent node, and the reliability controls.
 
-```python
+```bash
+cat > ~/day6/lab1_ci_agent.py <<'EOF'
 from langchain_ollama import ChatOllama
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
-from langgraph.graph import StateGraph, MessagesState, START, END
-from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.graph import (
+    StateGraph,
+    MessagesState,
+    START,
+    END,
+)
+
+from langgraph.prebuilt import (
+    ToolNode,
+    tools_condition,
+)
 
 from ci_tools import TOOLS
 
+
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
+
 MODEL_NAME = "llama3.2:3b"
+
+
+# ============================================================================
+# 1. CREATE LLM
+# ============================================================================
 
 model = ChatOllama(
     model=MODEL_NAME,
     temperature=0,
 )
 
-model_with_tools = model.bind_tools(TOOLS)
-```
 
-`bind_tools` sends each tool's name, docstring and JSON schema to the model so it knows
-what it may request.
+# ============================================================================
+# 2. BIND TOOLS TO LLM
+# ============================================================================
 
-> **`temperature=0`** makes the agent's *decisions* deterministic — same conversation,
-> same tool chosen. Note that the nested call inside `analyze_root_cause` does not set
-> temperature, so it samples at Ollama's default `0.8`. That is why the tool *sequence*
-> is identical every run while the *analysis text* varies.
+model_with_tools = model.bind_tools(
+    TOOLS
+)
 
-### Reliability control — argument normalization
 
-```python
-TOOLS_BY_NAME = {tool.name: tool for tool in TOOLS}
+# ============================================================================
+# TOOL-CALL NORMALIZATION
+# ============================================================================
+
+TOOLS_BY_NAME = {
+    tool.name: tool
+    for tool in TOOLS
+}
 
 
 def _schema_fields(tool):
     """Parameter names the tool actually accepts."""
-    return list(tool.args_schema.model_fields.keys())
+
+    return list(
+        tool.args_schema.model_fields.keys()
+    )
 
 
 def _normalize_args(tool_name: str, args: dict) -> dict:
@@ -837,26 +906,48 @@ def _normalize_args(tool_name: str, args: dict) -> dict:
 
     valid = _schema_fields(tool)
 
-    kept  = {k: v for k, v in args.items() if k in valid}
-    stray = [v for k, v in args.items() if k not in valid]
-    free  = [n for n in valid if n not in kept]
+    kept = {
+        key: value
+        for key, value in args.items()
+        if key in valid
+    }
+
+    stray = [
+        value
+        for key, value in args.items()
+        if key not in valid
+    ]
+
+    free = [
+        name
+        for name in valid
+        if name not in kept
+    ]
 
     for name, value in zip(free, stray):
         kept[name] = value
 
     if kept != args:
-        print(f"   🩹 Normalized arguments: {args} → {kept}")
+
+        print(
+            f"   🩹 Normalized arguments: {args} → {kept}"
+        )
 
     return kept
-```
 
-### The agent node — where the LLM decides
 
-```python
+# ============================================================================
+# 3. AGENT NODE
+# ============================================================================
+
 def agent_node(state: MessagesState):
     """
+    Agent node.
+
     The LLM receives the conversation and decides:
-        1. Call a tool, OR
+
+        1. Call a tool
+        OR
         2. Return the final answer
     """
 
@@ -865,7 +956,13 @@ def agent_node(state: MessagesState):
     print("🤖 AGENT NODE")
     print("=" * 70)
 
-    response = model_with_tools.invoke(state["messages"])
+    response = model_with_tools.invoke(
+        state["messages"]
+    )
+
+    # ------------------------------------------------------------
+    # Show what the LLM decided
+    # ------------------------------------------------------------
 
     if response.tool_calls:
 
@@ -885,27 +982,39 @@ def agent_node(state: MessagesState):
 
         for tool_call in response.tool_calls:
 
-            print(f"   → {tool_call['name']}")
+            print(
+                f"   → {tool_call['name']}"
+            )
 
             tool_call["args"] = _normalize_args(
                 tool_call["name"],
                 tool_call["args"],
             )
 
-            print(f"     Arguments: {tool_call['args']}")
+            print(
+                f"     Arguments: "
+                f"{tool_call['args']}"
+            )
 
     else:
-        print("🧠 LLM returned a final response.")
 
-    return {"messages": [response]}
-```
+        print(
+            "🧠 LLM returned a final response."
+        )
 
-**Both reliability controls live here**, in the gap between "the model asked" and
-"the tool ran."
+    # ------------------------------------------------------------
+    # Return the LLM response to graph state
+    # ------------------------------------------------------------
 
-### The tools node — where trusted Python executes
+    return {
+        "messages": [response]
+    }
 
-```python
+
+# ============================================================================
+# 4. TOOLS NODE
+# ============================================================================
+
 _tool_node = ToolNode(TOOLS)
 
 
@@ -921,23 +1030,50 @@ def tool_node(state: MessagesState):
         if len(preview) > 200:
             preview = preview[:200] + " …"
 
-        print(f"   ↩︎  {message.name}: {preview}")
+        print(
+            f"   ↩︎  {message.name}: {preview}"
+        )
 
     return result
-```
 
-Wrapping `ToolNode` makes every result visible. Without this, a failed tool call is
-silent — the model just quietly moves on with an error string it ignored.
 
-### Build the graph
+# ============================================================================
+# 5. CREATE GRAPH
+# ============================================================================
 
-```python
-builder = StateGraph(MessagesState)
+builder = StateGraph(
+    MessagesState
+)
 
-builder.add_node("agent", agent_node)
-builder.add_node("tools", tool_node)
 
-builder.add_edge(START, "agent")
+# ============================================================================
+# 6. ADD TWO NODES
+# ============================================================================
+
+builder.add_node(
+    "agent",
+    agent_node,
+)
+
+builder.add_node(
+    "tools",
+    tool_node,
+)
+
+
+# ============================================================================
+# 7. START → AGENT
+# ============================================================================
+
+builder.add_edge(
+    START,
+    "agent",
+)
+
+
+# ============================================================================
+# 8. AGENT → TOOLS OR END
+# ============================================================================
 
 builder.add_conditional_edges(
     "agent",
@@ -948,21 +1084,53 @@ builder.add_conditional_edges(
     },
 )
 
-builder.add_edge("tools", "agent")
+
+# ============================================================================
+# 9. TOOLS → AGENT
+# ============================================================================
+
+builder.add_edge(
+    "tools",
+    "agent",
+)
+
+
+# ============================================================================
+# 10. COMPILE GRAPH
+# ============================================================================
 
 graph = builder.compile()
-```
 
-Four lines of routing. That is the entire deterministic control flow:
 
-```
-START → agent → (tools_condition) → tools → agent → ... → END
-```
+# ============================================================================
+# 11. SHOW GRAPH
+# ============================================================================
 
-### Run it
+def show_graph():
 
-```python
+    print()
+    print("=" * 70)
+    print("LANGGRAPH")
+    print("=" * 70)
+
+    print(
+        graph.get_graph().draw_mermaid()
+    )
+
+    print("=" * 70)
+
+
+# ============================================================================
+# 12. RUN AGENT
+# ============================================================================
+
 def main():
+
+    print()
+    print("=" * 70)
+    print("DAY 06 — CI FAILURE ANALYZER")
+    print("LangGraph + Ollama + Tools")
+    print("=" * 70)
 
     system_prompt = """
 You are a CI failure analysis agent.
@@ -994,31 +1162,225 @@ The tools already remember them.
     result = graph.invoke(
         {
             "messages": [
-                SystemMessage(content=system_prompt),
-                HumanMessage(content=task_prompt),
+                SystemMessage(
+                    content=system_prompt
+                ),
+                HumanMessage(
+                    content=task_prompt
+                ),
             ]
         },
-        {"recursion_limit": 25},
+        {
+            "recursion_limit": 25,
+        },
     )
+
+    # ------------------------------------------------------------
+    # Final response
+    # ------------------------------------------------------------
+
+    print()
+    print("=" * 70)
+    print("✅ WORKFLOW COMPLETED")
+    print("=" * 70)
 
     # The PR body is what draft_pr_description actually produced.
     # Don't rely on a 3B model to echo 1KB of markdown back verbatim.
     pr_body = None
 
     for message in result["messages"]:
-        if isinstance(message, ToolMessage) and message.name == "draft_pr_description":
+
+        if (
+            isinstance(message, ToolMessage)
+            and message.name == "draft_pr_description"
+        ):
             pr_body = message.content
 
-    print(pr_body if pr_body else "⚠️  draft_pr_description never ran.")
+    print()
 
+    if pr_body:
+
+        print(pr_body)
+
+    else:
+
+        print(
+            "⚠️  draft_pr_description never ran. "
+            "Model's closing message:"
+        )
+        print()
+        print(result["messages"][-1].content)
+
+    print()
+    print("=" * 70)
+
+
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
 
 if __name__ == "__main__":
+
     show_graph()
+
     main()
+EOF
 ```
 
-> **`recursion_limit: 25`** caps the `agent → tools → agent` loop. Without it, a model that
-> keeps requesting tools loops forever.
+---
+
+### Verify all three files exist
+
+```bash
+ls -l ~/day6/ci_failure_gha.log ~/day6/ci_tools.py ~/day6/lab1_ci_agent.py
+python3 -c "import ast; [ast.parse(open(f).read()) for f in ['ci_tools.py','lab1_ci_agent.py']]; print('syntax ok')"
+```
+
+---
+
+## Step 1.2 — Walkthrough: `ci_tools.py`
+
+You have already created this file. This section explains the parts that matter.
+
+### Day 05 reuse
+
+```python
+DAY5_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "day5",
+)
+
+if DAY5_DIR not in sys.path:
+    sys.path.insert(0, DAY5_DIR)
+
+from rag_tool import search_similar_failures
+```
+
+> Day 06 owns **no** embeddings, **no** ChromaDB client, and **no** seed data. It imports
+> one function from Day 05. One knowledge base, one source of truth.
+>
+> This walks up from `~/day6/ci_tools.py` to `~`, then into `~/day5` — which is why the
+> two folders must be siblings.
+
+### `_LAST` — the application holds the state
+
+```python
+_LAST = {
+    "log": "",
+    "kb": "",
+    "analysis": "",
+}
+```
+
+Each tool writes its result here, and later tools read from it. This is why
+`analyze_root_cause` and `draft_pr_description` can be called with **no arguments**.
+
+**`_LAST` is application-level shared state — it is not `MessagesState` and not
+LangGraph state.**
+
+### Tool 1 — `read_log_file`
+
+**Reliability control:** the path fallback.
+
+```python
+if not os.path.isfile(resolved):
+    resolved = os.path.join(SCRIPT_DIR, LOG_FILE)
+```
+
+The model has invented `/var/log/ci_failure.log` before. Returning an error string just
+makes it hallucinate log contents instead.
+
+### Tool 2 — `search_knowledge_base`
+
+A thin wrapper that logs and caches. All embedding and vector search happens inside
+Day 05's `search_similar_failures`.
+
+### Tool 3 — `analyze_root_cause`
+
+Three things to point out:
+
+1. **A tool can itself call an LLM.** The agent LLM decides *to analyze*; this nested
+   call *does* the analyzing. Its JSON returns to graph state as a `ToolMessage`.
+2. **`"format": "json"`** forces syntactically valid JSON out of `llama3.2:3b`.
+   It does **not** guarantee which keys appear.
+3. **The retrieved history is an instruction, not decoration.** The prompt explicitly
+   says *prefer that documented fix* — otherwise the model retrieves the right precedent
+   and then ignores it.
+
+### Tool 4 — `draft_pr_description`
+
+**Reliability control:** the PR body is built by **Python string formatting**, not by the
+LLM. The model supplies six short values; the document structure is deterministic. A
+missing key yields `Unknown`, not a hallucinated section.
+
+---
+
+## Step 1.3 — Walkthrough: `lab1_ci_agent.py`
+
+### Model and tool binding
+
+```python
+model = ChatOllama(model=MODEL_NAME, temperature=0)
+model_with_tools = model.bind_tools(TOOLS)
+```
+
+`bind_tools` sends each tool's name, docstring and JSON schema to the model so it knows
+what it may request.
+
+> **`temperature=0`** makes the agent's *decisions* deterministic — same conversation,
+> same tool chosen. The nested call inside `analyze_root_cause` does not set temperature,
+> so it samples at Ollama's default `0.8`. That is why the tool *sequence* is identical
+> every run while the *analysis text* varies.
+
+### Reliability control — one tool per turn
+
+```python
+if len(response.tool_calls) > 1:
+    response.tool_calls = response.tool_calls[:1]
+```
+
+### Reliability control — argument normalization
+
+`_normalize_args` drops unknown keys and remaps stray values onto free schema fields:
+
+```
+{'q': 'npm error ERESOLVE...'}  →  {'query': 'npm error ERESOLVE...'}
+```
+
+It prints a `🩹` line whenever it fires, so the repair is visible rather than magic.
+
+### Making tool results visible
+
+Wrapping `ToolNode` prints every result. Without it, a failed tool call is silent — the
+model just quietly moves on with an error string it ignored.
+
+### The graph
+
+```python
+builder.add_node("agent", agent_node)
+builder.add_node("tools", tool_node)
+
+builder.add_edge(START, "agent")
+
+builder.add_conditional_edges(
+    "agent",
+    tools_condition,
+    {"tools": "tools", END: END},
+)
+
+builder.add_edge("tools", "agent")
+
+graph = builder.compile()
+```
+
+Four lines of routing. That is the entire deterministic control flow:
+
+```
+START → agent → (tools_condition) → tools → agent → ... → END
+```
+
+> **`recursion_limit: 25`** caps the `agent → tools → agent` loop. Without it, a model
+> that keeps requesting tools loops forever.
 
 > **The final output is pulled from the `ToolMessage`, not the model's closing text.**
 > A 3B model asked to "reply with its output verbatim" sometimes replies
