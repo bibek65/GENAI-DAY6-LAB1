@@ -6,7 +6,7 @@
 **Duration:** 1.5 hours
 **Local model:** `llama3.2:3b` + `nomic-embed-text`
 **Framework:** LangGraph (`StateGraph`, `ToolNode`, `tools_condition`)
-**Prereqs:** Day 05 `ci_knowledge_base` on disk at `../day5/ci_knowledge_base`
+**Prereqs:** Day 05 `ci_knowledge_base` on disk at `~/day5/ci_knowledge_base`
 
 ---
 
@@ -383,7 +383,7 @@ ollama pull nomic-embed-text
 ### Step 4 — Check the Day 05 knowledge base
 
 ```bash
-cd ~/Desktop/Personal/AI/day6
+cd ~/day6
 ls ../day5/ci_knowledge_base/chroma.sqlite3
 ```
 
